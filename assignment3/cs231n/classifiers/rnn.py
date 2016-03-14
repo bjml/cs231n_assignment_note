@@ -135,7 +135,36 @@ class CaptioningRNN(object):
     # defined above to store loss and gradients; grads[k] should give the      #
     # gradients for self.params[k].                                            #
     ############################################################################
-    pass
+    #1
+    h0=features.dot(W_proj)+b_proj
+    #2
+    x_in,cache_xin=word_embedding_forward(captions_in,W_embed)
+    #3
+    if self.cell_type=='rnn':
+      h, cache=rnn_forward(x_in,h0,Wx,Wh,b)
+    else:
+      h, cache=lstm_forward(x_in,h0,Wx,Wh,b)
+    #4
+    scores=h.dot(W_vocab)+b_vocab
+    #5
+    loss,dscores=temporal_softmax_loss(x=scores, y=captions_out, mask=mask)
+    #6
+    N,T,W=x_in.shape
+    H=h.shape[2]
+    W=W_embed.shape[1]
+    V=W_vocab.shape[1]
+    dh=dscores.dot(W_vocab.T)
+    dW_vocab=h.reshape([N*T,H]).T.dot(dscores.reshape([N*T,V]))
+    db_vocab=np.sum(np.sum(dscores,0),0)
+    if self.cell_type=='rnn':
+      dx, dh0, dWx, dWh, db=rnn_backward(dh, cache)
+    else:
+      dx, dh0, dWx, dWh, db=lstm_backward(dh, cache)
+    dW_embed=word_embedding_backward(dx,cache_xin)
+    dW_proj=features.T.dot(dh0)
+    db_proj=np.sum(dh0,0)
+    grads['W_vocab'],grads['b_vocab'],grads['Wx'],grads['Wh'],grads['b'],grads['W_embed'],grads['W_proj'],grads['b_proj']\
+      =dW_vocab,db_vocab,dWx,dWh,db,dW_embed,dW_proj,db_proj
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
@@ -197,7 +226,21 @@ class CaptioningRNN(object):
     # functions; you'll need to call rnn_step_forward or lstm_step_forward in #
     # a loop.                                                                 #
     ###########################################################################
-    pass
+    h0=features.dot(W_proj)+b_proj
+    captions_in=self._start*np.ones([N,1])
+    ht=h0
+    ct=0
+    for i in xrange(max_length):
+      x,cache_xin=word_embedding_forward(captions_in,W_embed)
+      x_in=x[0:N,0,:]
+      if self.cell_type=='rnn':
+        ht, cache=rnn_step_forward(x_in,ht , Wx, Wh, b)
+      else:
+        ht, ct, cache=lstm_step_forward(x_in,ht,ct,Wx,Wh,b)
+      scores=ht.dot(W_vocab)+b_vocab
+      index=np.max(scores,axis=1)
+      captions[:,i]=index
+      captions_in=index*np.ones([N,1])
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
